@@ -345,15 +345,12 @@ export const streamApi: RouterPluginAsyncCallback = async (fastify) => {
         }
         const windowSegment = req.params.file.match(SubtitleWindowRegex)?.[1];
         if (windowSegment !== undefined) {
-          session.onSegmentRequested(req.ip, req.params.file);
           const vtt = await hlsSession.subtitleWindow(parseInt(windowSegment));
           return vtt === undefined
             ? res.status(404).send('Subtitle segment not found')
             : res.type('text/vtt').send(injectTimestampMap(vtt));
         }
       }
-
-      session.onSegmentRequested(req.ip, req.params.file);
 
       if (req.params.file.endsWith('.vtt')) {
         const filePath = resolve(session.workingDirectory, req.params.file);
