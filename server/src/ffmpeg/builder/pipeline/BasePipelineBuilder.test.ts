@@ -1,11 +1,18 @@
+import dayjs from 'dayjs';
 import { FileStreamSource } from '../../../stream/types.ts';
 import { EmptyFfmpegCapabilities } from '../capabilities/FfmpegCapabilities.ts';
 import { AudioVolumeFilter } from '../filter/AudioVolumeFilter.ts';
 import { LoudnormFilter } from '../filter/LoudnormFilter.ts';
 import { PixelFormatYuv420P } from '../format/PixelFormat.ts';
 import { AudioInputSource } from '../input/AudioInputSource.ts';
+import { SubtitlesInputSource } from '../input/SubtitlesInputSource.ts';
 import { VideoInputSource } from '../input/VideoInputSource.ts';
-import { AudioStream, VideoStream } from '../MediaStream.ts';
+import {
+  AudioStream,
+  ExternalSubtitleStream,
+  SubtitleMethods,
+  VideoStream,
+} from '../MediaStream.ts';
 import { AudioState } from '../state/AudioState.ts';
 import { DefaultPipelineOptions, FfmpegState } from '../state/FfmpegState.ts';
 import { FrameState } from '../state/FrameState.ts';
@@ -416,5 +423,32 @@ describe('BasePipelineBuilder', () => {
     const channelIdx = commandArgs?.indexOf('-ac');
     expect(channelIdx).toBeDefined();
     expect(commandArgs?.at(channelIdx + 1)).toBe('6');
+  });
+
+  test('seeks a separate converted subtitle input with the video (#1970)', () => {
+    const subtitles = new SubtitlesInputSource(
+      new FileStreamSource('/path/to/subs.srt'),
+      [new ExternalSubtitleStream('subrip', SubtitleMethods.Convert)],
+      SubtitleMethods.Convert,
+    );
+    const pipeline = new NoopPipelineBuilder(
+      video,
+      audio,
+      null,
+      subtitles,
+      null,
+      EmptyFfmpegCapabilities,
+    );
+    const midProgram = FfmpegState.create({
+      version: state.version,
+      start: dayjs.duration({ minutes: 90 }),
+    });
+
+    const args = pipeline
+      .build(midProgram, frameState, DefaultPipelineOptions)
+      .getCommandArgs()
+      .join(' ');
+
+    expect(args).toContain('-ss 5400000ms -i /path/to/subs.srt');
   });
 });
