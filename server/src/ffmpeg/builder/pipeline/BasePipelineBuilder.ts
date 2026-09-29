@@ -859,6 +859,11 @@ export abstract class BasePipelineBuilder implements PipelineBuilder {
       const option = new StreamSeekInputOption(this.ffmpegState.start);
       this.audioInputSource?.addOption(option);
       this.videoInputSource.addOption(option);
+      // A separate subtitle file must start at the same program position as
+      // the video, otherwise its cues play from the start of the file (#1970).
+      if (this.subtitleInputSource?.method === SubtitleMethods.Convert) {
+        this.subtitleInputSource.addOption(option);
+      }
 
       if (this.context.hasSubtitleTextContext()) {
         this.pipelineSteps.push(new StreamSeekFilter(this.ffmpegState.start));
