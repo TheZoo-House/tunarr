@@ -32,6 +32,12 @@ import { BaseHlsSession } from './BaseHlsSession.js';
 import { HlsMasterPlaylistMutator } from './HlsMasterPlaylistMutator.js';
 import type { HlsPlaylistFilterOptions } from './HlsPlaylistMutator.js';
 import { HlsPlaylistMutator } from './HlsPlaylistMutator.js';
+import {
+  parseCues,
+  segmentWindows,
+  subtitlePlaylistFromVideo,
+  subtitleWindowVtt,
+} from './HlsSubtitlePlaylist.js';
 
 export type HlsSessionProvider = (
   channel: ChannelOrmWithTranscodeConfig,
@@ -60,6 +66,7 @@ export class HlsSession extends BaseHlsSession<HlsSessionOptions> {
   #lastDiscontinuitySequence: number | undefined;
   #currentSubtitleRendition: SubtitleRenditionInfo | undefined;
   #currentAudioRenditions: AudioRenditionInfo[] = [];
+  #lastServedPlaylist: string | undefined;
 
   constructor(
     channel: ChannelOrmWithTranscodeConfig,
@@ -134,6 +141,7 @@ export class HlsSession extends BaseHlsSession<HlsSessionOptions> {
             },
           );
           this.#lastDiscontinuitySequence = trimResult.discontinuitySequence;
+          this.#lastServedPlaylist = trimResult.playlist;
           const now = dayjs();
           if (now.isAfter(this.#lastDelete.add(30, 'seconds'))) {
             this.logger.debug(
@@ -407,6 +415,46 @@ export class HlsSession extends BaseHlsSession<HlsSessionOptions> {
   isStale(): boolean {
     const remainingConnections = this.removeStaleConnections();
     return isEmpty(remainingConnections);
+  }
+
+  /**
+   * Subtitle playlist aligned segment for segment with the last video playlist
+   * served, so both renditions share one timeline.
+   */
+  async subtitlePlaylist() {
+    if (this.#lastServedPlaylist === undefined) {
+      // Only when a client asks for subtitles before video; avoid otherwise
+      // because trimming advances the discontinuity-sequence state.
+      const trimmed = await this.trimPlaylist();
+      if (trimmed.isFailure()) {
+        throw trimmed.error;
+      }
+    }
+    return this.#lastServedPlaylist === undefined
+      ? undefined
+      : subtitlePlaylistFromVideo(this.#lastServedPlaylist);
+  }
+
+  /** WebVTT holding the cues that start inside video segment `segmentNumber`. */
+  async subtitleWindow(segmentNumber: number) {
+    const playlistLines = await this.readPlaylist();
+    const window = playlistLines
+      ? segmentWindows(playlistLines.join('\n')).get(segmentNumber)
+      : undefined;
+    if (!window) {
+      return;
+    }
+    // ponytail: rereads every cue file per request (about 1,500 small files
+    // for a feature film); cache by name and mtime if this shows up in profiles.
+    const cueFiles = (await fs.readdir(this._workingDirectory)).filter((file) =>
+      /^sub\d+\.vtt$/.test(file),
+    );
+    const contents = await Promise.all(
+      cueFiles.map((file) =>
+        fs.readFile(path.join(this._workingDirectory, file), 'utf-8'),
+      ),
+    );
+    return subtitleWindowVtt(contents.flatMap(parseCues), ...window);
   }
 
   private async readPlaylist() {
