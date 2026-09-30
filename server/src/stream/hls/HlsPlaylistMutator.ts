@@ -6,11 +6,11 @@ import {
   filter,
   first,
   isEmpty,
+  isUndefined,
   last,
   max,
   nth,
   reject,
-  take,
   takeRight,
   trimEnd,
 } from 'lodash-es';
@@ -46,7 +46,7 @@ export type HlsPlaylistFilterOptions =
 export class HlsPlaylistMutator {
   trimPlaylist(
     start: Dayjs,
-    filter: HlsPlaylistFilterOptions,
+    filter: HlsPlaylistFilterOptions | undefined,
     playlistLines: string[],
     opts: MutateOptions,
   ): TrimPlaylistResult {
@@ -128,7 +128,7 @@ export class HlsPlaylistMutator {
 
   private generatePlaylist(
     items: PlaylistLine[],
-    filterOptions: HlsPlaylistFilterOptions,
+    filterOptions: HlsPlaylistFilterOptions | undefined,
     maxSegmentsToKeep: number,
     targetDuration: number,
     previousDiscontinuitySequence?: number,
@@ -148,41 +148,49 @@ export class HlsPlaylistMutator {
     );
 
     if (allSegments.length > maxSegmentsToKeep) {
-      const filtered = match(filterOptions)
-        .with({ type: 'before_date' }, ({ before }) =>
-          reject(allSegments, (segment) => segment.startTime.isBefore(before)),
-        )
-        .with(
-          {
-            type: 'before_segment_number',
-          },
-          (beforeSeg) => {
-            const minSeg = Math.max(
-              beforeSeg.segmentNumber - beforeSeg.segmentsToKeepBefore,
-              beforeSeg.segmentFloor ?? 0,
-            );
-            return seq.collect(allSegments, (segment) => {
-              const fileName = basename(segment.line);
-              const matches = fileName.match(SegmentNameRegex);
-              if (!matches || matches.length < 2) {
-                return;
-              }
-              const int = parseInt(matches[1]!);
-              if (isNaN(int)) {
-                return;
-              }
-              if (int < minSeg) {
-                return;
-              }
-              return segment;
-            });
-          },
-        )
-        .exhaustive();
+      const filtered = isUndefined(filterOptions)
+        ? allSegments
+        : match(filterOptions)
+            .with({ type: 'before_date' }, ({ before }) =>
+              reject(allSegments, (segment) =>
+                segment.startTime.isBefore(before),
+              ),
+            )
+            .with(
+              {
+                type: 'before_segment_number',
+              },
+              (beforeSeg) => {
+                const minSeg = Math.max(
+                  beforeSeg.segmentNumber - beforeSeg.segmentsToKeepBefore,
+                  beforeSeg.segmentFloor ?? 0,
+                );
+                return seq.collect(allSegments, (segment) => {
+                  const fileName = basename(segment.line);
+                  const matches = fileName.match(SegmentNameRegex);
+                  if (!matches || matches.length < 2) {
+                    return;
+                  }
+                  const int = parseInt(matches[1]!);
+                  if (isNaN(int)) {
+                    return;
+                  }
+                  if (int < minSeg) {
+                    return;
+                  }
+                  return segment;
+                });
+              },
+            )
+            .exhaustive();
 
+      // The window always tracks the live edge; the filter only acts as a
+      // floor. Taking from the front instead anchored the window to the oldest
+      // segment any client still wanted, freezing the playlist for every other
+      // viewer (issue #2045).
       allSegments =
         filtered.length >= maxSegmentsToKeep
-          ? take(filtered, maxSegmentsToKeep)
+          ? takeRight(filtered, maxSegmentsToKeep)
           : takeRight(allSegments, maxSegmentsToKeep);
     }
 
@@ -342,7 +350,7 @@ export class HlsPlaylistMutator {
 
       allSegments =
         filtered.length >= opts.maxSegmentsToKeep
-          ? take(filtered, opts.maxSegmentsToKeep)
+          ? takeRight(filtered, opts.maxSegmentsToKeep)
           : takeRight(allSegments, opts.maxSegmentsToKeep);
     }
 
