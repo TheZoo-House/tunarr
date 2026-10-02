@@ -1,4 +1,5 @@
 import { faker } from '@faker-js/faker';
+import dayjs from 'dayjs';
 import { describe, expect, it, vi } from 'vitest';
 import { Result } from '@/types/result.js';
 import { PlexApiClient } from './PlexApiClient.js';
@@ -417,6 +418,78 @@ describe('PlexApiClient', () => {
         expect.anything(),
         expect.anything(),
         expect.anything(),
+      );
+    });
+  });
+
+  describe('quick scan listings', () => {
+    it('lists only movies updated since the cutoff', async () => {
+      const { client, externalLibraryKey } = makeMinimalPlexClient();
+      const metadata = [makePlexMovieMetadata('7', Number(externalLibraryKey))];
+      const doGetSpy = mockPagedItems(client, metadata);
+      const since = dayjs.unix(1_790_000_000);
+
+      const movies = [];
+      for await (const movie of client.getMovieLibraryContents(
+        externalLibraryKey,
+        50,
+        since,
+      )) {
+        movies.push(movie);
+      }
+
+      expect(movies).toHaveLength(1);
+      for (const call of doGetSpy.mock.calls) {
+        expect(call[2]).toMatchObject({
+          params: { 'updatedAt>>': 1_790_000_000 },
+        });
+      }
+    });
+
+    it('collects shows that changed or have changed episodes', async () => {
+      const { client } = makeMinimalPlexClient();
+      const doGetSpy = vi
+        .spyOn(client, 'doTypeCheckedGet' as never)
+        .mockImplementation(
+          (
+            _path: string,
+            _schema: unknown,
+            config: { params: Record<string, unknown> },
+          ) => {
+            const Metadata =
+              config.params['type'] === 2
+                ? [{ ratingKey: '10' }]
+                : [
+                    { ratingKey: '101', grandparentRatingKey: '20' },
+                    { ratingKey: '102', grandparentRatingKey: '20' },
+                  ];
+            return Promise.resolve(
+              Result.success({
+                MediaContainer: {
+                  size: Metadata.length,
+                  totalSize: Metadata.length,
+                  Metadata,
+                },
+              }),
+            );
+          },
+        );
+
+      const result = await client.getChangedShowKeys(
+        '2',
+        dayjs.unix(1_790_000_000),
+      );
+
+      expect(result.get()).toEqual(new Set(['10', '20']));
+      expect(doGetSpy).toHaveBeenCalledWith(
+        '/library/sections/2/all',
+        expect.anything(),
+        expect.objectContaining({
+          params: expect.objectContaining({
+            type: 4,
+            'updatedAt>>': 1_790_000_000,
+          }),
+        }),
       );
     });
   });

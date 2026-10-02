@@ -1,5 +1,5 @@
 import { Trans, useLingui } from '@lingui/react/macro';
-import { HourglassTop, Radar, Refresh } from '@mui/icons-material';
+import { Bolt, HourglassTop, Radar, Refresh } from '@mui/icons-material';
 import {
   Box,
   Card,
@@ -70,7 +70,7 @@ const MediaSourceLibraryTableActionCell = ({
   const queryClient = useQueryClient();
 
   const startRefresh = useCallback(
-    (ev: React.MouseEvent, force: boolean = false) => {
+    (ev: React.MouseEvent, force: boolean = false, quick: boolean = false) => {
       ev.stopPropagation();
       ev.preventDefault();
       setIsRefreshing(true);
@@ -82,6 +82,7 @@ const MediaSourceLibraryTableActionCell = ({
           },
           query: {
             forceScan: force,
+            quick,
           },
         },
         {
@@ -174,6 +175,25 @@ const MediaSourceLibraryTableActionCell = ({
           </IconButton>
         </span>
       </Tooltip>
+      {!isRefreshing && library.mediaSource.type === 'plex' && (
+        <Tooltip
+          placement="top"
+          title={
+            library.isLocked
+              ? t`Scanning`
+              : t`Quick Scan: only items changed since the last scan`
+          }
+        >
+          <span>
+            <IconButton
+              disabled={library.isLocked}
+              onClick={(e) => startRefresh(e, false, true)}
+            >
+              <Bolt />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
       {!isRefreshing && (
         <Tooltip
           placement="top"

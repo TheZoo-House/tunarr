@@ -120,6 +120,7 @@ export class MediaSourceScanCoordinator {
     libraryId,
     forceScan,
     pathFilter,
+    quick,
   }: ScanRequest): Promise<boolean> {
     const library = await this.mediaSourceDB.getLibrary(libraryId);
 
@@ -173,7 +174,12 @@ export class MediaSourceScanCoordinator {
             controller.signal.addEventListener('abort', () => {
               scanner.cancel(library.uuid);
             });
-            await scanner.scan({ library, force: forceScan, pathFilter });
+            await scanner.scan({
+              library,
+              force: forceScan,
+              pathFilter,
+              quick,
+            });
             if (collectionScanner) {
               await collectionScanner.scanLibrary({
                 libraryId: library.uuid,
@@ -224,6 +230,7 @@ type ScanRequest = {
   libraryId: string;
   forceScan: boolean;
   pathFilter?: string;
+  quick?: boolean;
 };
 
 type LocalScanRequest = {
