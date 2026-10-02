@@ -199,7 +199,7 @@ export abstract class MediaSourceTvShowLibraryScanner<
       }
     }
 
-    if (isEmpty(context.pathFilter)) {
+    if (isEmpty(context.pathFilter) && !context.quickSince) {
       const missingShows = differenceWith(
         values(existingShowsByExternalId),
         [...seenShows.values()],
