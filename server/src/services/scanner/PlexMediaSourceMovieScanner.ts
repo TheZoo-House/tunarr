@@ -65,12 +65,14 @@ export class PlexMediaSourceMovieScanner extends MediaSourceMovieLibraryScanner<
     );
   }
 
+  protected override readonly supportsQuickScan = true;
+
   protected getLibrarySize(
     libraryKey: string,
     context: ScanContext<PlexApiClient>,
   ): Promise<number> {
     return context.apiClient
-      .getLibraryCount(libraryKey)
+      .getLibraryCount(libraryKey, context.quickSince)
       .then((_) => _.getOrThrow());
   }
 
@@ -78,7 +80,11 @@ export class PlexMediaSourceMovieScanner extends MediaSourceMovieLibraryScanner<
     libraryKey: string,
     context: ScanContext<PlexApiClient>,
   ): AsyncIterable<PlexMovie> {
-    return context.apiClient.getMovieLibraryContents(libraryKey);
+    return context.apiClient.getMovieLibraryContents(
+      libraryKey,
+      undefined,
+      context.quickSince,
+    );
   }
 
   protected async scanMovie(

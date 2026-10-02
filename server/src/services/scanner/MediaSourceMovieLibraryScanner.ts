@@ -159,7 +159,7 @@ export abstract class MediaSourceMovieLibraryScanner<
       );
     }
 
-    if (isEmpty(context.pathFilter)) {
+    if (isEmpty(context.pathFilter) && !context.quickSince) {
       const missingMovies = differenceWith(
         values(existingPrograms),
         [...seenMovieIds.values()],
