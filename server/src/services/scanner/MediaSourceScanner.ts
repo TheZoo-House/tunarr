@@ -1,6 +1,7 @@
 import type { MediaSourceLibrary } from '@/db/schema/MediaSourceLibrary.js';
 import { InjectLogger } from '@/util/inject.js';
 import { isNonEmptyString } from '@tunarr/shared/util';
+import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import type { MediaSourceDB } from '../../db/mediaSourceDB.ts';
 import type {
@@ -23,6 +24,9 @@ export type ScanRequest = {
   library: MediaSourceLibrary;
   force?: boolean;
   pathFilter?: string;
+  // Only scan items the source reports as changed since the last scan.
+  // Ignored by scanners that do not support it, and on a library's first scan.
+  quick?: boolean;
 };
 
 export type ScanSingleRequest = {
@@ -37,6 +41,9 @@ export type ScanContext<ApiClientTypeT> = {
   apiClient: ApiClientTypeT;
   force: boolean;
   pathFilter?: string;
+  // Set for quick scans: only items changed since this time are listed, so
+  // items absent from the listing must not be treated as missing.
+  quickSince?: Dayjs;
 
   // internal state
   scannedEntities: number;
@@ -88,6 +95,8 @@ export abstract class MediaSourceScanner<
 
   @InjectLogger() declare protected readonly logger: Logger;
 
+  protected readonly supportsQuickScan: boolean = false;
+
   constructor(
     protected mediaSourceDB: MediaSourceDB,
     protected externalSubtitleDownloader: ExternalSubtitleDownloader,
@@ -95,8 +104,9 @@ export abstract class MediaSourceScanner<
     super();
   }
 
-  async scan({ library, force, pathFilter }: ScanRequest) {
+  async scan({ library, force, pathFilter, quick }: ScanRequest) {
     this.#state.set(library.uuid, 'starting');
+    const startedAt = dayjs();
 
     this.#state.set(library.uuid, 'running');
 
@@ -115,13 +125,20 @@ export abstract class MediaSourceScanner<
 
       devAssert(mediaSource.type === this.mediaSourceType);
 
+      // Margin for clock skew between Tunarr and the media server.
+      const quickSince =
+        quick && this.supportsQuickScan && library.lastScannedAt
+          ? dayjs(library.lastScannedAt).subtract(10, 'minutes')
+          : undefined;
+
       this.logger.info(
-        'Scanning %s library (ID = %s, name = %s, force = %s, filter = %s)',
+        'Scanning %s library (ID = %s, name = %s, force = %s, filter = %s, changed since = %s)',
         mediaSource.type,
         library.uuid,
         library.name,
         force,
         pathFilter,
+        quickSince?.format(),
       );
 
       await this.scanInternal({
@@ -130,11 +147,17 @@ export abstract class MediaSourceScanner<
         force: force ?? false,
         apiClient: await this.getApiClient(mediaSource),
         pathFilter,
+        quickSince,
         scannedEntities: 0,
         totalEntities: 0,
       });
 
-      await this.mediaSourceDB.setLibraryLastScannedTime(library.uuid, dayjs());
+      // The start time, so changes made while this scan ran are picked up by
+      // the next quick scan.
+      await this.mediaSourceDB.setLibraryLastScannedTime(
+        library.uuid,
+        startedAt,
+      );
     } finally {
       this.#state.delete(library.uuid);
     }
