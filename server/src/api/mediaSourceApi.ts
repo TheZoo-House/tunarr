@@ -441,6 +441,7 @@ export const mediaSourceRouter: RouterPluginAsyncCallback = async (
         }),
         querystring: z.object({
           forceScan: TruthyQueryParam.optional(),
+          quick: TruthyQueryParam.optional(),
         }),
         response: {
           202: z.void(),
@@ -470,6 +471,7 @@ export const mediaSourceRouter: RouterPluginAsyncCallback = async (
         }),
         querystring: z.object({
           forceScan: TruthyQueryParam.optional(),
+          quick: TruthyQueryParam.optional(),
         }),
         response: {
           202: z.void(),
@@ -515,6 +517,7 @@ export const mediaSourceRouter: RouterPluginAsyncCallback = async (
           const result = await req.serverCtx.mediaSourceScanCoordinator.add({
             libraryId: library.uuid,
             forceScan: !!req.query.forceScan,
+            quick: !!req.query.quick,
           });
           if (!result) {
             logger.error(

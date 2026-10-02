@@ -71,11 +71,37 @@ export class PlexMediaSourceTvShowScanner extends MediaSourceTvShowLibraryScanne
     );
   }
 
-  protected getTvShowLibraryContents(
+  protected override readonly supportsQuickScan = true;
+
+  // One lookup per quick scan, shared by the size and contents calls.
+  #changedShows = new WeakMap<
+    ScanContext<PlexApiClient>,
+    Promise<Set<string>>
+  >();
+
+  private changedShows(libraryId: string, context: ScanContext<PlexApiClient>) {
+    let changed = this.#changedShows.get(context);
+    if (!changed && context.quickSince) {
+      changed = context.apiClient
+        .getChangedShowKeys(libraryId, context.quickSince)
+        .then((result) => result.getOrThrow());
+      this.#changedShows.set(context, changed);
+    }
+    return changed;
+  }
+
+  protected async *getTvShowLibraryContents(
     libraryId: string,
     context: ScanContext<PlexApiClient>,
   ): AsyncIterable<PlexShow> {
-    return context.apiClient.getTvShowLibraryContents(libraryId);
+    const changed = await this.changedShows(libraryId, context);
+    for await (const show of context.apiClient.getTvShowLibraryContents(
+      libraryId,
+    )) {
+      if (!changed || changed.has(show.externalId)) {
+        yield show;
+      }
+    }
   }
 
   protected getTvShowSeasons(
@@ -130,10 +156,14 @@ export class PlexMediaSourceTvShowScanner extends MediaSourceTvShowLibraryScanne
     return item.externalId;
   }
 
-  protected getLibrarySize(
+  protected async getLibrarySize(
     libraryKey: string,
     context: ScanContext<PlexApiClient>,
   ): Promise<number> {
+    const changed = await this.changedShows(libraryKey, context);
+    if (changed) {
+      return changed.size;
+    }
     return context.apiClient
       .getLibraryCount(libraryKey)
       .then((_) => _.getOrThrow());

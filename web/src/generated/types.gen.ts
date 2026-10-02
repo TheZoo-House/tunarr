@@ -9527,6 +9527,7 @@ export type PostApiMediaSourcesByIdScanData = {
     };
     query?: {
         forceScan?: boolean | 'true' | 'false' | number;
+        quick?: boolean | 'true' | 'false' | number;
     };
     url: '/api/media-sources/{id}/scan';
 };
@@ -9557,6 +9558,7 @@ export type PostApiMediaSourcesByIdLibrariesByLibraryIdScanData = {
     };
     query?: {
         forceScan?: boolean | 'true' | 'false' | number;
+        quick?: boolean | 'true' | 'false' | number;
     };
     url: '/api/media-sources/{id}/libraries/{libraryId}/scan';
 };

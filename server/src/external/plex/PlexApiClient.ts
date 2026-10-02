@@ -3,6 +3,7 @@ import type { MediaSourceLibrary } from '@/db/schema/MediaSourceLibrary.js';
 import type { Nilable, Nullable } from '@/types/util.js';
 import { type Maybe } from '@/types/util.js';
 import dayjs from '@/util/dayjs.js';
+import type { Dayjs } from 'dayjs';
 import {
   caughtErrorToError,
   isDefined,
@@ -143,6 +144,20 @@ type PlexTypes = {
   [ProgramType.Track]: PlexTrack;
 };
 
+const RatingKeyContainerSchema = z.object({
+  MediaContainer: z.object({
+    totalSize: z.number().optional(),
+    Metadata: z
+      .array(
+        z.object({
+          ratingKey: z.string(),
+          grandparentRatingKey: z.string().optional(),
+        }),
+      )
+      .optional(),
+  }),
+});
+
 export type PlexApiClientFactory = (opts: ApiClientOptions) => PlexApiClient;
 
 export class PlexApiClient extends MediaSourceApiClient<PlexTypes> {
@@ -271,13 +286,76 @@ export class PlexApiClient extends MediaSourceApiClient<PlexTypes> {
   getMovieLibraryContents(
     libraryId: string,
     pageSize: number = 50,
+    updatedSince?: Dayjs,
   ): AsyncIterable<PlexMovie> {
     return this.iterateChildItems(
       libraryId,
       PlexMovieMediaContainerResponseSchema,
       (movie, library) => this.plexMovieInjection(movie, library),
       pageSize,
+      undefined,
+      undefined,
+      updatedSince ? { 'updatedAt>>': updatedSince.unix() } : {},
     );
+  }
+
+  /**
+   * Rating keys of shows in a library that changed since `since`, either the
+   * show itself or any of its episodes (for example a newly added episode).
+   */
+  async getChangedShowKeys(
+    libraryId: string,
+    since: Dayjs,
+  ): Promise<Result<Set<string>>> {
+    const key = `/library/sections/${libraryId}/all`;
+    const updated = { 'updatedAt>>': since.unix() };
+    const shows = await this.listRatingKeys(
+      key,
+      { type: 2, ...updated },
+      (item) => item.ratingKey,
+    );
+    const episodes = await this.listRatingKeys(
+      key,
+      { type: 4, ...updated },
+      (item) => item.grandparentRatingKey,
+    );
+    return shows.flatMap((showKeys) =>
+      episodes.map(
+        (episodeShowKeys) => new Set([...showKeys, ...episodeShowKeys]),
+      ),
+    );
+  }
+
+  private async listRatingKeys(
+    key: string,
+    filters: Record<string, string | number>,
+    pick: (item: {
+      ratingKey: string;
+      grandparentRatingKey?: string;
+    }) => Maybe<string>,
+  ): Promise<Result<string[]>> {
+    const pageSize = 200;
+    const keys: string[] = [];
+    for (let start = 0; ; start += pageSize) {
+      const page = await this.doTypeCheckedGet(key, RatingKeyContainerSchema, {
+        params: {
+          ...filters,
+          'X-Plex-Container-Start': start,
+          'X-Plex-Container-Size': pageSize,
+        },
+      });
+      if (page.isFailure()) {
+        return page.recast();
+      }
+      const { Metadata = [], totalSize } = page.get().MediaContainer;
+      keys.push(...seq.collect(Metadata, pick));
+      if (
+        Metadata.length < pageSize ||
+        start + Metadata.length >= (totalSize ?? Infinity)
+      ) {
+        return Result.success(keys);
+      }
+    }
   }
 
   getTvShowLibraryContents(
@@ -407,8 +485,9 @@ export class PlexApiClient extends MediaSourceApiClient<PlexTypes> {
     materializeFull: Maybe<
       (item: ItemType) => Promise<QueryResult<OutType>>
     > = undefined,
+    filters: Record<string, string | number> = {},
   ): AsyncGenerator<OutType> {
-    const count = await this.getChildCount(key);
+    const count = await this.getChildCount(key, filters);
     if (count.isFailure()) {
       throw count.error;
     }
@@ -417,6 +496,7 @@ export class PlexApiClient extends MediaSourceApiClient<PlexTypes> {
     for (let page = 0; page <= totalPages; page++) {
       const chunkResult = await this.doTypeCheckedGet(key, schema, {
         params: {
+          ...filters,
           'X-Plex-Container-Size': pageSize,
           'X-Plex-Container-Start': page * pageSize,
         },
@@ -622,8 +702,11 @@ export class PlexApiClient extends MediaSourceApiClient<PlexTypes> {
     );
   }
 
-  async getLibraryCount(libraryId: string) {
-    return this.getChildCount(`/library/sections/${libraryId}/all`);
+  async getLibraryCount(libraryId: string, updatedSince?: Dayjs) {
+    return this.getChildCount(
+      `/library/sections/${libraryId}/all`,
+      updatedSince ? { 'updatedAt>>': updatedSince.unix() } : {},
+    );
   }
 
   async getItemChildCount(key: string) {
@@ -686,9 +769,13 @@ export class PlexApiClient extends MediaSourceApiClient<PlexTypes> {
     });
   }
 
-  private getChildCount(key: string) {
+  private getChildCount(
+    key: string,
+    filters: Record<string, string | number> = {},
+  ) {
     return this.doTypeCheckedGet(key, PlexContainerStatsSchema, {
       params: {
+        ...filters,
         'X-Plex-Container-Size': 0,
         'X-Plex-Container-Start': 0,
       },
