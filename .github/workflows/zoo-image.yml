@@ -41,7 +41,9 @@ jobs:
             tunarr_version=${{ env.TUNARR_VERSION }}
             tunarr_build=${{ env.TUNARR_BUILD }}
             exec_target=linux-x64
-          tags: ghcr.io/thezoo-house/tunarr:${{ env.TUNARR_VERSION }}
+          tags: |
+            ghcr.io/thezoo-house/tunarr:${{ env.TUNARR_VERSION }}
+            ghcr.io/thezoo-house/tunarr:latest
           labels: org.opencontainers.image.source=https://github.com/TheZoo-House/tunarr
           cache-from: type=gha
           cache-to: type=gha,mode=max
