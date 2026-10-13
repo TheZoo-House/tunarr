@@ -51,6 +51,10 @@ class TestHlsSession extends BaseHlsSession {
     return Result.success({ playlist: VARIANT_PLAYLIST });
   }
 
+  async subtitleWindow(segmentNumber: number) {
+    return segmentNumber === 10 ? 'WEBVTT\n\n' : undefined;
+  }
+
   protected getHlsOptions(): DeepRequired<HlsOptions> {
     return {
       hlsDeleteThreshold: 3,
@@ -164,6 +168,28 @@ describe('streamApi HLS connection registration (issue #2045 invariant)', () => 
     expect(token).toBe('203.0.113.10'); // NOT a UUID — streamApi passes req.ip
     expect(details.ip).toBe('203.0.113.10');
     expect(Object.keys(session.connections())).toEqual(['203.0.113.10']);
+  });
+
+  it('serves virtual subtitle windows without requiring a physical VTT file', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/stream/channels/${makeChannel().uuid}/hls/subs000010.vtt`,
+      remoteAddress: '203.0.113.10',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/vtt');
+    expect(res.body).toContain('X-TIMESTAMP-MAP=MPEGTS:0');
+    expect(session.minSegment).toBe(0);
+  });
+
+  it('rejects nonexistent virtual windows without moving video position', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/stream/channels/${makeChannel().uuid}/hls/subs999999.vtt`,
+      remoteAddress: '203.0.113.10',
+    });
+    expect(res.statusCode).toBe(404);
+    expect(session.minSegment).toBe(0);
   });
 
   it('fragment route keys _minByIp and connections by the client IP, and stale cleanup releases the window', async () => {
