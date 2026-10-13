@@ -35,6 +35,7 @@ export const dbChannelToApiChannel = ({
 
   return {
     id: channel.uuid,
+    autoSkipCredits: Boolean(channel.autoSkipCredits),
     number: channel.number,
     watermark: nilToUndefined(channel.watermark),
     fillerCollections: channel.fillerShows.map((filler) => ({
@@ -88,6 +89,7 @@ export const ormChannelToApiChannel = ({
 
   return {
     id: channel.uuid,
+    autoSkipCredits: Boolean(channel.autoSkipCredits),
     number: channel.number,
     watermark: nilToUndefined(channel.watermark),
     fillerCollections: channel.fillerShows?.map((filler) => ({

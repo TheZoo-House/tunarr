@@ -12,6 +12,7 @@ export function condensedProgramToLineupItem(
       id: program.id,
       durationMs: program.duration,
       startOffsetMs: program.startOffsetMs,
+      creditSkip: program.creditSkip,
     }))
     .with({ type: 'custom' }, (program) => ({
       type: 'content',
@@ -19,6 +20,7 @@ export function condensedProgramToLineupItem(
       id: program.id,
       customShowId: program.customShowId,
       startOffsetMs: program.startOffsetMs,
+      creditSkip: program.creditSkip,
     }))
     .with({ type: 'filler' }, (program) => ({
       type: 'content',

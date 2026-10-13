@@ -17,6 +17,8 @@ import type { IChannelDB } from '../../db/interfaces/IChannelDB.ts';
 import type { ProgramDB } from '../../db/ProgramDB.ts';
 import type { ProgramWithRelationsOrm } from '../../db/schema/derivedTypes.ts';
 import { SmartCollectionsDB } from '../../db/SmartCollectionsDB.ts';
+import type { DrizzleDBAccess } from '../../db/schema/index.ts';
+import { loadCreditSkips, creditSkipDuration } from '../../util/creditSkip.ts';
 import { KEYS } from '../../types/inject.ts';
 import { zipWithIndex } from '../../util/index.ts';
 import { ScheduleValidationError } from '../../types/errors.ts';
@@ -40,6 +42,7 @@ export class SlotSchedulerHelper {
   @InjectLogger() declare private readonly logger: Logger;
 
   constructor(
+    @inject(KEYS.DrizzleDB) private drizzleDB: DrizzleDBAccess,
     @inject(CustomShowDB) private customShowDB: CustomShowDB,
     @inject(FillerDB) private fillerDB: FillerDB,
     @inject(KEYS.ProgramDB) private programDB: ProgramDB,
@@ -115,6 +118,26 @@ export class SlotSchedulerHelper {
       });
     }
 
+    const enabled =
+      request.type === 'channel'
+        ? Boolean(
+            (await this.channelDB.getChannelOrm(request.channelId))
+              ?.autoSkipCredits,
+          )
+        : (request.autoSkipCredits ?? false);
+    if (enabled) {
+      const plans = await loadCreditSkips(
+        this.drizzleDB,
+        slotPrograms.map((program) => program.uuid),
+      );
+      for (const program of slotPrograms) {
+        const creditSkip = plans.get(program.uuid);
+        if (creditSkip) {
+          program.creditSkip = creditSkip;
+          program.duration = creditSkipDuration(creditSkip);
+        }
+      }
+    }
     return slotPrograms;
   }
 

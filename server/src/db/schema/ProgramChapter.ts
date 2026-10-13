@@ -2,7 +2,6 @@ import type { TupleToUnion } from '@tunarr/types';
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm';
 import { relations } from 'drizzle-orm';
 import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
-import type { Insertable } from 'kysely';
 import type { KyselifyBetter } from './KyselifyBetter.ts';
 import { ProgramVersion } from './ProgramVersion.ts';
 
@@ -17,6 +16,7 @@ export const ProgramChapter = sqliteTable(
     startTime: integer().notNull(),
     endTime: integer().notNull(),
     title: text(),
+    isFinal: integer({ mode: 'boolean' }),
     chapterType: text({ enum: ProgramChapterType })
       .notNull()
       .default('chapter'),
@@ -41,4 +41,4 @@ export const ProgramChapterRelations = relations(ProgramChapter, ({ one }) => ({
 export type ProgramChapterTable = KyselifyBetter<typeof ProgramChapter>;
 export type ProgramChapter = InferSelectModel<typeof ProgramChapter>;
 export type NewProgramChapterOrm = InferInsertModel<typeof ProgramChapter>;
-export type NewProgramChapter = Insertable<ProgramChapterTable>;
+export type NewProgramChapter = NewProgramChapterOrm;

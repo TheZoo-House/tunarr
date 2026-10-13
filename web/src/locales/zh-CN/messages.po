@@ -657,6 +657,10 @@ msgstr "自动去隔行"
 msgid "Auto uses the time convention for the selected language."
 msgstr "自动模式将采用所选语言的时间习惯。"
 
+#: src/components/channel_config/ChannelPropertiesEditor.tsx
+msgid "Auto-skip credits"
+msgstr ""
+
 #: src/components/settings/media_source/PlexServerEditDialog.tsx
 msgid "Auto-Update Guide"
 msgstr "自动更新节目单"
@@ -3134,6 +3138,10 @@ msgstr "QSV 设备"
 msgid "Queued"
 msgstr "已排队"
 
+#: src/components/MediaSourceLibraryTable.tsx
+msgid "Quick Scan: only items changed since the last scan"
+msgstr ""
+
 #: src/components/channel_config/ChannelProgrammingSort.tsx
 #: src/components/custom-shows/CustomShowSortToolsMenu.tsx
 #: src/components/programming_controls/AddBlockShuffleModal.tsx
@@ -3462,6 +3470,7 @@ msgstr "扫描器"
 
 #: src/components/MediaSourceLibraryTable.tsx
 #: src/components/MediaSourceLibraryTable.tsx
+#: src/components/MediaSourceLibraryTable.tsx
 msgid "Scanning"
 msgstr "扫描中"
 
@@ -3640,6 +3649,10 @@ msgstr "随机打乱节目"
 #: src/components/programming_controls/ShuffleProgrammingModal.tsx
 msgid "Shuffle programming in a channel, optionally grouping programs by certain criteria."
 msgstr "随机打乱频道中的节目，可选择按特定条件对节目分组。"
+
+#: src/components/channel_config/ChannelPropertiesEditor.tsx
+msgid "Skip marked credit sections in movies and episodes. Keep scenes between and after credits. Programs without usable markers play in full."
+msgstr ""
 
 #: src/components/slot_scheduler/MidRollConfigPanel.tsx
 msgid "Skip mid-roll for programs shorter than this"

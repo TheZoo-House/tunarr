@@ -157,6 +157,7 @@ export const ChannelSessionSchema = z.object({
 });
 
 export const ChannelSchema = z.object({
+  autoSkipCredits: z.boolean().default(false),
   disableFillerOverlay: z.boolean(),
   duration: z.number(),
   fallback: z.array(ProgramSchema).optional(),
@@ -198,6 +199,7 @@ export const SaveableChannelSchema = ChannelSchema.omit({
     onDemand: true,
   })
   .extend({
+    autoSkipCredits: z.boolean().optional(),
     icon: StrictChannelIconSchema,
     watermark: StrictWatermarkSchema.optional(),
   });

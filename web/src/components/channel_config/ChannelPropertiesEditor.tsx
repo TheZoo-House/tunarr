@@ -284,6 +284,30 @@ export function ChannelPropertiesEditor() {
                 )}
               </Box>
             </Box>
+            <Stack>
+              <Controller
+                control={control}
+                name="autoSkipCredits"
+                render={({ field }) => (
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={field.value ?? false}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                      />
+                    }
+                    label={t`Auto-skip credits`}
+                  />
+                )}
+              />
+              <Typography variant="body2">
+                <Trans>
+                  Skip marked credit sections in movies and episodes. Keep
+                  scenes between and after credits. Programs without usable
+                  markers play in full.
+                </Trans>
+              </Typography>
+            </Stack>
             <Stack gap={2}>
               <Typography variant="h5">
                 <Trans>On-Demand</Trans>

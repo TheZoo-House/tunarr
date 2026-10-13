@@ -20,3 +20,5 @@ export * from './guideApiSchemas.js';
 export * from './nativePlaybackSchemas.js';
 export * from './streamSelectionSchema.js';
 export * from './troubleshootSchemas.js';
+
+export { CreditSkipSchema, type CreditSkip } from './lineupPrograms.js';

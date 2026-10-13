@@ -2,7 +2,7 @@
 // but contain a bit more context and are used during an
 // active streaming session
 
-import type { OfflineFillerConfig } from '@tunarr/types/schemas';
+import type { CreditSkip, OfflineFillerConfig } from '@tunarr/types/schemas';
 import type { StrictOmit } from 'ts-essentials';
 import type { MarkNotNilable } from '../../types/util.ts';
 import type { MediaSourceType } from '../schema/base.js';
@@ -110,6 +110,7 @@ export type FallbackStreamLineupItem = BaseContentBackedStreamLineupItem & {
 export type ProgramStreamLineupItem = BaseContentBackedStreamLineupItem & {
   type: 'program';
   customShowId?: string;
+  creditSkip?: CreditSkip;
 };
 
 export type RedirectStreamLineupItem = BaseStreamLineupItem & {

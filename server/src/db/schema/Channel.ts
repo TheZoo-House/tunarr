@@ -27,6 +27,7 @@ export const Channel = sqliteTable(
   'channel',
   {
     uuid: text().primaryKey(),
+    autoSkipCredits: integer({ mode: 'boolean' }).notNull().default(false),
     createdAt: integer(),
     updatedAt: integer(),
     disableFillerOverlay: integer({ mode: 'boolean' }).default(false),

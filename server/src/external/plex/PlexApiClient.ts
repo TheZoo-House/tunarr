@@ -2372,6 +2372,7 @@ export class PlexApiClient extends MediaSourceApiClient<PlexTypes> {
       ([marker, index]) =>
         ({
           chapterType: 'outro',
+          isFinal: marker.final,
           endTime: marker.endTimeOffset,
           startTime: marker.startTimeOffset,
           index,

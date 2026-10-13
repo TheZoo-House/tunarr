@@ -309,7 +309,7 @@ export const channelsApi: RouterPluginAsyncCallback = async (fastify) => {
           logger.warn(e, 'Could not delete old channel icon file from disk');
         }
 
-        const updatedChannel = await req.serverCtx.channelDB.updateChannel(
+        let updatedChannel = await req.serverCtx.channelDB.updateChannel(
           channel.uuid,
           channelUpdate,
         );
@@ -319,6 +319,8 @@ export const channelsApi: RouterPluginAsyncCallback = async (fastify) => {
           );
 
         const needsGuideRegen =
+          Boolean(channel.autoSkipCredits) !==
+            updatedChannel.channel.autoSkipCredits ||
           channel.guideMinimumDuration !==
             updatedChannel.channel.guideMinimumDuration ||
           channel.startTime !== updatedChannel.channel.startTime ||
@@ -333,6 +335,9 @@ export const channelsApi: RouterPluginAsyncCallback = async (fastify) => {
           await container
             .get<RegenerateChannelLineupCommand>(RegenerateChannelLineupCommand)
             .execute({ channelId: channel.uuid });
+          const refreshed =
+            await req.serverCtx.channelDB.loadChannelAndLineupOrm(channel.uuid);
+          if (refreshed) updatedChannel = refreshed;
         } else {
           await req.serverCtx.guideService.updateCachedChannel(channel.uuid);
         }

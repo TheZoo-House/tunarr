@@ -14,4 +14,12 @@ On-Demand will allow your channels to behave similar to streaming services, wher
 
 ![Channel properties](/assets/channel-properties.png)
 
-Click the ["FLEX" tab](/configure/channels/flex) if you'd like to configure optional filler content to play in-between episodes. 
+Click the ["FLEX" tab](/configure/channels/flex) if you'd like to configure optional filler content to play in-between episodes.
+
+## Auto-skip credits
+
+Auto-skip credits is off by default. Enable it in a channel's Properties to omit explicit outro marker intervals from movies and episodes. Unmarked scenes between credit sections and after the last section still play, in their original order. The next program starts after the retained content finishes. Media files are never changed.
+
+Schedules and guide entries use the retained playback duration. Saving a changed setting regenerates an existing slot schedule; manual lineups keep their program order. Disabling the setting restores the original source spans.
+
+Plex credit markers already imported into Tunarr are supported. The final-marker flag is retained when supplied, but never extends a skip beyond the marker's explicit end. Missing, invalid, out-of-range or whole-file markers leave playback unchanged. Programs with multiple media versions or a duration mismatch also play unchanged. Ordinary chapter titles are not credit markers. This setting does not scan libraries or analyze media, and filler clips retain their existing behavior.
