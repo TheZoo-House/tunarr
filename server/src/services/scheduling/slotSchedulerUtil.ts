@@ -1,3 +1,4 @@
+import type { CreditSkip } from '@tunarr/types/schemas';
 import constants from '@tunarr/shared/constants';
 import { isNonEmptyString } from '@tunarr/shared/util';
 import {
@@ -103,6 +104,7 @@ export type CustomShowContext = {
 };
 
 export type SlotSchedulerProgram = ProgramWithRelationsOrm & {
+  creditSkip?: CreditSkip;
   parentFillerLists: string[];
   parentCustomShows: CustomShowContext[];
   parentSmartCollections: string[];
@@ -225,7 +227,15 @@ export function createProgramMap(
       for (const fillerList of program.parentFillerLists) {
         const id = `filler.${fillerList}` as const;
         const existing = acc.filler[id] ?? [];
-        existing.push(program);
+        existing.push(
+          program.creditSkip
+            ? {
+                ...program,
+                duration: program.creditSkip.sourceDurationMs,
+                creditSkip: undefined,
+              }
+            : program,
+        );
         acc.filler[id] = existing;
       }
 

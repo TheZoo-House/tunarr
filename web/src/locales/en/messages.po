@@ -673,6 +673,10 @@ msgstr "Auto Deinterlace Video"
 msgid "Auto uses the time convention for the selected language."
 msgstr "Auto uses the time convention for the selected language."
 
+#: src/components/channel_config/ChannelPropertiesEditor.tsx
+msgid "Auto-skip credits"
+msgstr "Auto-skip credits"
+
 #: src/components/settings/media_source/PlexServerEditDialog.tsx
 msgid "Auto-Update Guide"
 msgstr "Auto-Update Guide"
@@ -3194,6 +3198,10 @@ msgstr "QSV Device"
 msgid "Queued"
 msgstr "Queued"
 
+#: src/components/MediaSourceLibraryTable.tsx
+msgid "Quick Scan: only items changed since the last scan"
+msgstr "Quick Scan: only items changed since the last scan"
+
 #: src/components/channel_config/ChannelProgrammingSort.tsx
 #: src/components/custom-shows/CustomShowSortToolsMenu.tsx
 #: src/components/programming_controls/AddBlockShuffleModal.tsx
@@ -3527,6 +3535,7 @@ msgstr "Scanner"
 
 #: src/components/MediaSourceLibraryTable.tsx
 #: src/components/MediaSourceLibraryTable.tsx
+#: src/components/MediaSourceLibraryTable.tsx
 msgid "Scanning"
 msgstr "Scanning"
 
@@ -3727,6 +3736,10 @@ msgstr "Shuffle Programming"
 #: src/components/programming_controls/ShuffleProgrammingModal.tsx
 msgid "Shuffle programming in a channel, optionally grouping programs by certain criteria."
 msgstr "Shuffle programming in a channel, optionally grouping programs by certain criteria."
+
+#: src/components/channel_config/ChannelPropertiesEditor.tsx
+msgid "Skip marked credit sections in movies and episodes. Keep scenes between and after credits. Programs without usable markers play in full."
+msgstr "Skip marked credit sections in movies and episodes. Keep scenes between and after credits. Programs without usable markers play in full."
 
 #: src/components/slot_scheduler/MidRollConfigPanel.tsx
 msgid "Skip mid-roll for programs shorter than this"

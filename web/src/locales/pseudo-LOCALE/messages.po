@@ -673,6 +673,10 @@ msgstr ""
 msgid "Auto uses the time convention for the selected language."
 msgstr ""
 
+#: src/components/channel_config/ChannelPropertiesEditor.tsx
+msgid "Auto-skip credits"
+msgstr ""
+
 #: src/components/settings/media_source/PlexServerEditDialog.tsx
 msgid "Auto-Update Guide"
 msgstr ""
@@ -3192,6 +3196,10 @@ msgstr ""
 msgid "Queued"
 msgstr ""
 
+#: src/components/MediaSourceLibraryTable.tsx
+msgid "Quick Scan: only items changed since the last scan"
+msgstr ""
+
 #: src/components/channel_config/ChannelProgrammingSort.tsx
 #: src/components/custom-shows/CustomShowSortToolsMenu.tsx
 #: src/components/programming_controls/AddBlockShuffleModal.tsx
@@ -3525,6 +3533,7 @@ msgstr ""
 
 #: src/components/MediaSourceLibraryTable.tsx
 #: src/components/MediaSourceLibraryTable.tsx
+#: src/components/MediaSourceLibraryTable.tsx
 msgid "Scanning"
 msgstr ""
 
@@ -3724,6 +3733,10 @@ msgstr ""
 
 #: src/components/programming_controls/ShuffleProgrammingModal.tsx
 msgid "Shuffle programming in a channel, optionally grouping programs by certain criteria."
+msgstr ""
+
+#: src/components/channel_config/ChannelPropertiesEditor.tsx
+msgid "Skip marked credit sections in movies and episodes. Keep scenes between and after credits. Programs without usable markers play in full."
 msgstr ""
 
 #: src/components/slot_scheduler/MidRollConfigPanel.tsx

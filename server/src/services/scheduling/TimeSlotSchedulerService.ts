@@ -1,3 +1,4 @@
+import { scheduleCreditSkips } from '../../util/creditSkip.ts';
 import type { TimeSlotScheduleResult } from '@tunarr/types/api';
 import { TimeSlotScheduleSchema } from '@tunarr/types/api';
 import dayjs from 'dayjs';
@@ -16,6 +17,7 @@ export const ChannelTimeSlotScheduleRequest = z.object({
   // Set on save and preview. Rejects slots that reference missing content or
   // cannot play. Regeneration leaves it off so stored schedules keep playing.
   strictValidation: z.boolean().optional(),
+  autoSkipCredits: z.boolean().optional(),
 });
 
 export type ChannelTimeSlotScheduleRequest = z.infer<
@@ -32,6 +34,7 @@ export const ProgramsTimeSlotScheduleRequest = z.object({
   // Set on save and preview. Rejects slots that reference missing content or
   // cannot play. Regeneration leaves it off so stored schedules keep playing.
   strictValidation: z.boolean().optional(),
+  autoSkipCredits: z.boolean().optional(),
 });
 
 export type ProgramsTimeSlotScheduleRequest = z.infer<
@@ -67,12 +70,16 @@ export class TimeSlotSchedulerService {
       );
     }
 
-    return scheduleTimeSlots(
+    const result = await scheduleTimeSlots(
       request.schedule,
       slotPrograms,
       request.seed,
       request.discardCount ?? 0,
       request.startTime ? dayjs(request.startTime) : undefined,
     );
+    return {
+      ...result,
+      lineup: scheduleCreditSkips(result.lineup, slotPrograms),
+    };
   }
 }

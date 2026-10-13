@@ -69,6 +69,8 @@ export class MaterializeLineupCommand {
             // We have to keep the lineup program's duration
             // here and not just override with the whole duration
             duration: c.duration,
+            startOffsetMs: c.startOffsetMs,
+            creditSkip: c.creditSkip,
           } satisfies ContentProgram;
         })
         .with({ type: 'custom' }, (c) => {

@@ -1,5 +1,9 @@
 import { LineupScheduleSchema } from '@tunarr/types/api';
-import { FillerType, OfflineFillerConfigSchema } from '@tunarr/types/schemas';
+import {
+  CreditSkipSchema,
+  FillerType,
+  OfflineFillerConfigSchema,
+} from '@tunarr/types/schemas';
 import { first } from 'lodash-es';
 import type { DeepReadonly } from 'ts-essentials';
 import { z } from 'zod/v4';
@@ -20,6 +24,7 @@ const ContentLineupItemSchema = z
     fillerListId: z.uuid().optional(),
     fillerType: FillerType.optional(),
     startOffsetMs: z.number().nonnegative().optional(),
+    creditSkip: CreditSkipSchema.optional(),
   })
   .merge(BaseLineupItemSchema);
 

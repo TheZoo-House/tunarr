@@ -72,11 +72,27 @@ export type ContentProgramOriginalProgram = z.infer<
   typeof OriginalProgramSchema
 >;
 
+export const CreditSkipSchema = z.object({
+  sourceStartOffsetMs: z.number().nonnegative(),
+  sourceDurationMs: z.number().positive(),
+  segments: z
+    .array(
+      z.object({
+        startOffsetMs: z.number().nonnegative(),
+        durationMs: z.number().positive(),
+      }),
+    )
+    .nonempty(),
+});
+
+export type CreditSkip = z.infer<typeof CreditSkipSchema>;
+
 export const CondensedContentProgramSchema = BaseProgramSchema.extend({
   type: z.literal('content'),
   id: z.string(),
   duration: z.number().min(0),
   startOffsetMs: z.number().nonnegative().optional(),
+  creditSkip: CreditSkipSchema.optional(),
 });
 
 export type CondensedContentProgram = z.infer<
@@ -142,6 +158,7 @@ export const CondensedCustomProgramSchema = BaseProgramSchema.extend({
   // Set on a segment of a program split by mid-roll breaks: where in the
   // program this segment resumes.
   startOffsetMs: z.number().nonnegative().optional(),
+  creditSkip: CreditSkipSchema.optional(),
   // program: CondensedContentProgramSchema.optional(),
 });
 
@@ -156,6 +173,7 @@ export const CustomProgramSchema = BaseProgramSchema.extend({
   customShowId: z.string(),
   index: z.number(),
   startOffsetMs: z.number().nonnegative().optional(),
+  creditSkip: CreditSkipSchema.optional(),
   program: ContentProgramSchema.optional(),
 });
 

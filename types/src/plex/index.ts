@@ -47,7 +47,10 @@ export type PlexChapter = z.infer<typeof PlexChapterSchema>;
 export const PlexMarkerSchema = z.object({
   startTimeOffset: z.number(),
   endTimeOffset: z.number(),
-  final: z.boolean().optional(), // If there are multiple, this indicates the last
+  final: z
+    .union([z.boolean(), z.literal(0), z.literal(1)])
+    .transform((value) => value === true || value === 1)
+    .optional(), // If there are multiple, this indicates the last
   type: z.string(), // Loose for now. Generally intro or credits
 });
 

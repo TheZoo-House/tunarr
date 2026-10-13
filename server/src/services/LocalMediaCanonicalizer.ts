@@ -198,6 +198,7 @@ export class LocalMediaCanonicalizer implements Canonicalizer<ProgramLike> {
         hash.update(c.startTime.toFixed());
         hash.update(c.index.toFixed());
         hash.update(c.title ?? '');
+        hash.update(c.isFinal?.toString() ?? '');
       });
 
       hash.update(base.mediaItem.displayAspectRatio ?? '');

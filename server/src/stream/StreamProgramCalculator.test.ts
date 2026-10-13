@@ -1,3 +1,5 @@
+import { mapLineupItemToPlaybackItem } from '../api/nativePlaybackApi.ts';
+import { resolveCreditSkip } from '../util/creditSkip.ts';
 import { faker } from '@faker-js/faker';
 import { tag } from '@tunarr/types';
 import dayjs from 'dayjs';
@@ -969,3 +971,91 @@ describe('StreamProgramCalculator', () => {
     });
   });
 });
+
+baseTest(
+  'credit skipping seeks within retained scenes, stops at credit boundaries, and advances on the effective clock',
+  async () => {
+    const fillerDB = mock<IFillerListDB>();
+    const channelDB = mock<IChannelDB>();
+    const programDB = mock<IProgramDB>();
+    const fillerPicker = mock<IFillerPicker>();
+    const playHistoryDB = mock<ProgramPlayHistoryDB>();
+    const creditSkip = resolveCreditSkip('movie', 100_000, [
+      {
+        duration: 100_000,
+        chapters: [
+          { chapterType: 'outro', startTime: 80_000, endTime: 90_000 },
+          { chapterType: 'outro', startTime: 94_000, endTime: 98_000 },
+        ],
+      },
+    ]);
+    if (!creditSkip) throw new Error('Invalid credit plan');
+    const channelId = faker.string.uuid();
+    const items: LineupItem[] = [
+      { type: 'content', id: 'movie', durationMs: 86_000, creditSkip },
+      { type: 'content', id: 'next', durationMs: 30_000 },
+    ];
+    const startTime = 1_000_000;
+    const channel = createChannelOrm({
+      uuid: channelId,
+      duration: 116_000,
+      startTime,
+      autoSkipCredits: true,
+    });
+    when(channelDB.getChannelOrm(channelId)).thenResolve(channel);
+    when(channelDB.loadLineup(channelId)).thenResolve({
+      version: 6,
+      lastUpdated: 1,
+      items,
+      startTimeOffsets: calculateStartTimeOffsets(items),
+    });
+    for (const id of ['movie', 'next']) {
+      when(programDB.getStreamProgramById(id)).thenResolve(
+        createFakeProgram({
+          uuid: id,
+          type: 'movie',
+          duration: id === 'movie' ? 100_000 : 30_000,
+          mediaSourceId: tag<MediaSourceId>('source'),
+        }),
+      );
+    }
+    when(
+      playHistoryDB.isProgramCurrentlyPlaying(
+        anything(),
+        anything(),
+        anything(),
+      ),
+    ).thenResolve(true);
+    const calculator = new StreamProgramCalculator(
+      instance(fillerDB),
+      instance(channelDB),
+      instance(programDB),
+      instance(fillerPicker),
+      instance(playHistoryDB),
+    );
+    const nativeItems = [];
+    for (const [elapsed, id, sourceOffset, remaining] of [
+      [79_000, 'movie', 79_000, 1_000],
+      [80_000, 'movie', 90_000, 4_000],
+      [83_500, 'movie', 93_500, 500],
+      [84_000, 'movie', 98_000, 2_000],
+      [85_750, 'movie', 99_750, 250],
+      [86_000, 'next', 0, 30_000],
+      [116_000, 'movie', 0, 80_000],
+    ] as const) {
+      const result = (
+        await calculator.getCurrentLineupItem({
+          channelId,
+          startTime: startTime + elapsed,
+          allowSkip: true,
+        })
+      ).get();
+      expect(result.lineupItem).toMatchObject({
+        type: 'program',
+        program: { uuid: id },
+        startOffset: sourceOffset,
+        streamDuration: remaining,
+      });
+    }
+  },
+);

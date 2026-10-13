@@ -70,6 +70,7 @@ function updateRequestToChannel(
     transcodeConfigId: updateReq.transcodeConfigId,
     streamMode: updateReq.streamMode,
     subtitlesEnabled: updateReq.subtitlesEnabled,
+    autoSkipCredits: updateReq.autoSkipCredits,
   } satisfies Partial<NewChannelOrm>;
 }
 
@@ -96,6 +97,7 @@ function createRequestToChannel(saveReq: SaveableChannel): NewChannelOrm {
     streamMode: saveReq.streamMode,
     transcodeConfigId: saveReq.transcodeConfigId,
     subtitlesEnabled: saveReq.subtitlesEnabled,
+    autoSkipCredits: saveReq.autoSkipCredits ?? false,
   } satisfies NewChannelOrm;
 }
 
@@ -268,6 +270,14 @@ export class BasicChannelRepository {
           delete lineup['onDemandConfig'];
         }
       });
+    }
+
+    if (
+      Boolean(channel.autoSkipCredits) ||
+      updateReq.autoSkipCredits === true
+    ) {
+      const lineup = await this.lineupRepository.loadLineup(id);
+      await this.lineupRepository.saveLineup(id, { items: [...lineup.items] });
     }
 
     return {

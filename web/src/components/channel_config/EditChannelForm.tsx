@@ -40,6 +40,7 @@ import {
 function getDefaultFormValues(channel: Channel): DeepRequired<SaveableChannel> {
   return {
     ...channel,
+    autoSkipCredits: channel.autoSkipCredits ?? false,
     streamMode: channel.streamMode ?? 'hls',
     fillerCollections: channel.fillerCollections ?? [],
     fillerRepeatCooldown:
@@ -94,7 +95,7 @@ const EditChannelTabsProps: EditChannelTabProps[] = [
   {
     value: 'properties',
     description: 'Properties',
-    fields: ['number', 'name', 'groupTitle', 'icon'],
+    fields: ['number', 'name', 'groupTitle', 'icon', 'autoSkipCredits'],
   },
   {
     value: 'flex',

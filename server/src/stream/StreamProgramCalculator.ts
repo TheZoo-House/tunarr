@@ -27,6 +27,7 @@ import { ProgramPlayHistoryDB } from '../db/ProgramPlayHistoryDB.ts';
 import { OneWeekMillis } from '../ffmpeg/builder/constants.ts';
 import type { IFillerPicker } from '../services/interfaces/IFillerPicker.ts';
 import { WrappedError } from '../types/errors.ts';
+import { creditSkipPlayback } from '../util/creditSkip.ts';
 import { devAssert } from '../util/debug.ts';
 import { isNonEmptyString } from '../util/index.js';
 import { wereThereTooManyAttempts } from './StreamThrottler.js';
@@ -370,6 +371,7 @@ export class StreamProgramCalculator {
             program = {
               ...baseItem,
               type: 'program',
+              creditSkip: lineupItem.creditSkip,
               infiniteLoop: false,
               startOffset: lineupItem.startOffsetMs ?? 0,
             } satisfies ProgramStreamLineupItem;
@@ -597,11 +599,22 @@ export class StreamProgramCalculator {
       };
     }
 
+    const retained =
+      program.type === 'program' && program.creditSkip
+        ? creditSkipPlayback(program.creditSkip, mediaStartOffset)
+        : undefined;
     return {
       ...program,
       type: 'program',
-      startOffset: mediaStartOffset + (program.startOffset ?? 0),
-      streamDuration,
+      // Native clients identify finite item streams by their playback start.
+      programBeginMs: program.programBeginMs + (retained?.segmentStartMs ?? 0),
+      startOffset:
+        retained?.startOffsetMs ??
+        mediaStartOffset + (program.startOffset ?? 0),
+      streamDuration: Math.min(
+        streamDuration,
+        retained?.durationMs ?? streamDuration,
+      ),
     };
   }
 }
@@ -648,6 +661,7 @@ export function calculateStreamDuration(
     // Skip the tail of a long program when little of it remains. A program
     // within 2x the slack is never skipped, or it would never air at all.
     if (
+      !(program.type === 'content' && program.creditSkip) &&
       program.durationMs > 2 * slackAmount &&
       timeElapsed > program.durationMs - slackAmount
     ) {

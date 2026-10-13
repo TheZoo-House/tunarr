@@ -62,6 +62,7 @@ import {
   run,
   wait,
 } from '../../util/index.ts';
+import { prepareCreditLineup } from '../../util/creditSkip.ts';
 import { ProgramConverter } from '../converters/ProgramConverter.ts';
 import { LineupProgramRelations } from '../program/programRelations.ts';
 import type {
@@ -270,6 +271,36 @@ export class LineupRepository {
   }
 
   async saveLineup(
+    channelId: string,
+    newLineup: UpdateChannelLineupRequest,
+  ): Promise<Lineup> {
+    if (newLineup.items !== undefined) {
+      const channel = await this.drizzleDB.query.channels.findFirst({
+        where: (fields, { eq }) => eq(fields.uuid, channelId),
+      });
+      const items = await prepareCreditLineup(
+        this.drizzleDB,
+        newLineup.items,
+        channel?.autoSkipCredits ?? false,
+      );
+      const durationChanged =
+        items.length !== newLineup.items.length ||
+        items.some(
+          (item, index) =>
+            item.durationMs !== newLineup.items?.[index]?.durationMs,
+        );
+      newLineup = {
+        ...newLineup,
+        items,
+        startTimeOffsets: durationChanged
+          ? undefined
+          : newLineup.startTimeOffsets,
+      };
+    }
+    return this.savePreparedLineup(channelId, newLineup);
+  }
+
+  private async savePreparedLineup(
     channelId: string,
     newLineup: UpdateChannelLineupRequest,
   ): Promise<Lineup> {
@@ -932,7 +963,7 @@ export class LineupRepository {
     };
 
     if (req.type === 'manual') {
-      const newLineupItems = await run(async () => {
+      const sourceLineupItems = await run(async () => {
         const newItems = req.lineup.map(condensedProgramToLineupItem);
         if (req.append) {
           const existingLineup = await this.loadLineup(channel.uuid);
@@ -941,6 +972,12 @@ export class LineupRepository {
           return newItems;
         }
       });
+
+      const newLineupItems = await prepareCreditLineup(
+        this.drizzleDB,
+        sourceLineupItems,
+        channel.autoSkipCredits,
+      );
 
       // Check the merged lineup, so an append cannot carry forward a stored
       // item that no longer resolves.
@@ -952,7 +989,7 @@ export class LineupRepository {
       );
 
       await this.timer.timeAsync('saveLineup', () =>
-        this.saveLineup(id, {
+        this.savePreparedLineup(id, {
           items: newLineupItems,
           scheduleSeed: null,
           onDemandConfig: isDefined(lineup.onDemandConfig)
@@ -984,6 +1021,7 @@ export class LineupRepository {
             seed: req.seed,
             startTime: channel.startTime,
             strictValidation: true,
+            autoSkipCredits: channel.autoSkipCredits,
           },
         });
 
@@ -1005,6 +1043,7 @@ export class LineupRepository {
             schedule: req.schedule,
             seed: req.seed,
             strictValidation: true,
+            autoSkipCredits: channel.autoSkipCredits,
           },
         });
         scheduleSeed = result.seed;
@@ -1017,11 +1056,15 @@ export class LineupRepository {
         );
       }
 
-      const newLineup = createNewLineup(programs);
+      const newLineup = await prepareCreditLineup(
+        this.drizzleDB,
+        createNewLineup(programs),
+        channel.autoSkipCredits,
+      );
       this.assertValidLineup(lineup, newLineup, req.schedule);
 
       const updatedChannel = updateChannel(newLineup);
-      await this.saveLineup(id, {
+      await this.savePreparedLineup(id, {
         items: newLineup,
         schedule: req.schedule,
         scheduleSeed,
@@ -1160,6 +1203,7 @@ export class LineupRepository {
           index: customShowIndexes[item.customShowId]![item.id] ?? -1,
           id: item.id,
           startOffsetMs: item.startOffsetMs,
+          creditSkip: item.creditSkip,
         };
       } else if (isNonEmptyString(item.fillerListId)) {
         p = {

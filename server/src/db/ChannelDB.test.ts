@@ -1,3 +1,19 @@
+import type { CustomShowDB } from './CustomShowDB.ts';
+import type { FillerDB } from './FillerListDB.ts';
+import type { ProgramDB } from './ProgramDB.ts';
+import type { SmartCollectionsDB } from './SmartCollectionsDB.ts';
+import { SlotSchedulerHelper } from '../services/scheduling/SlotSchedulerHelper.ts';
+import { TimeSlotSchedulerService } from '../services/scheduling/TimeSlotSchedulerService.ts';
+import { SlotSchedulerService } from '../services/scheduling/RandomSlotSchedulerService.ts';
+import { createFakeProgramOrm } from '../testing/fakes/entityCreators.ts';
+import {
+  TimeSlotScheduleSchema,
+  RandomSlotScheduleSchema,
+} from '@tunarr/types/api';
+import { instance, when, anything } from 'ts-mockito';
+import { ProgramVersion } from './schema/ProgramVersion.ts';
+import { ProgramChapter } from './schema/ProgramChapter.ts';
+import { tag } from '@tunarr/types';
 import { faker } from '@faker-js/faker';
 import { SaveableChannel } from '@tunarr/types';
 import tmp from 'tmp-promise';
@@ -1000,5 +1016,167 @@ describe('ChannelDB', () => {
       const lineup = await channelDb.loadChannelAndLineup(nonExistentId);
       expect(lineup).toBeNull();
     });
+  });
+});
+
+test('auto-skip credits persists, survives omitted fields and restores manual lineups when disabled', async ({
+  channelDb,
+  drizzle,
+  defaultTranscodeConfigId,
+}) => {
+  const data = createSaveableChannel(defaultTranscodeConfigId);
+  const created = await channelDb.saveChannel(data);
+  expect(created.channel.autoSkipCredits).toBe(false);
+  const id = v4();
+  const versionId = v4();
+  await drizzle.insert(Program).values({
+    uuid: id,
+    duration: 100_000,
+    type: 'movie',
+    title: 'Credit test',
+    sourceType: 'plex',
+    externalKey: id,
+    externalSourceId: tag('test'),
+  });
+  await drizzle.insert(ProgramVersion).values({
+    uuid: versionId,
+    programId: id,
+    duration: 100_000,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    width: 1920,
+    height: 1080,
+    scanKind: 'progressive',
+  });
+  await drizzle.insert(ProgramChapter).values([
+    {
+      uuid: v4(),
+      programVersionId: versionId,
+      index: 0,
+      chapterType: 'outro',
+      startTime: 80_000,
+      endTime: 90_000,
+      isFinal: false,
+    },
+    {
+      uuid: v4(),
+      programVersionId: versionId,
+      index: 1,
+      chapterType: 'outro',
+      startTime: 94_000,
+      endTime: 98_000,
+      isFinal: true,
+    },
+  ]);
+  const programs = mock<ProgramDB>();
+  when(programs.getProgramsByIds(anything())).thenResolve([
+    createFakeProgramOrm({ uuid: id, type: 'movie', duration: 100_000 }),
+  ]);
+  const helper = new SlotSchedulerHelper(
+    drizzle,
+    instance(mock<CustomShowDB>()),
+    instance(mock<FillerDB>()),
+    instance(programs),
+    instance(mock<SmartCollectionsDB>()),
+    channelDb,
+  );
+  const timeSchedule = TimeSlotScheduleSchema.parse({
+    type: 'time',
+    flexPreference: 'end',
+    maxDays: 1,
+    latenessMs: 0,
+    padMs: 1,
+    period: 'day',
+    timeZoneOffset: 0,
+    slots: [
+      {
+        id: v4(),
+        type: 'movie',
+        order: 'next',
+        direction: 'asc',
+        startTime: 0,
+      },
+    ],
+  });
+  const randomSchedule = RandomSlotScheduleSchema.parse({
+    type: 'random',
+    flexPreference: 'end',
+    maxDays: 1,
+    padMs: 1,
+    padStyle: 'episode',
+    randomDistribution: 'uniform',
+    slots: [
+      {
+        id: v4(),
+        type: 'movie',
+        order: 'next',
+        direction: 'asc',
+        weight: 1,
+        cooldownMs: 0,
+        durationSpec: { type: 'dynamic', programCount: 1 },
+      },
+    ],
+  });
+  for (const autoSkipCredits of [false, true]) {
+    const request = {
+      type: 'programs' as const,
+      programIds: [id],
+      autoSkipCredits,
+      seed: [1],
+      startTime: 1_000_000,
+    };
+    const time = await new TimeSlotSchedulerService(helper).schedule({
+      ...request,
+      schedule: timeSchedule,
+    });
+    const random = await new SlotSchedulerService(helper).schedule({
+      ...request,
+      schedule: randomSchedule,
+    });
+    for (const result of [time, random]) {
+      const content = result.lineup.find((item) => item.type === 'content');
+      expect(content).toMatchObject({
+        id,
+        duration: autoSkipCredits ? 86_000 : 100_000,
+      });
+      if (content?.type === 'content')
+        expect(Boolean(content.creditSkip)).toBe(autoSkipCredits);
+    }
+  }
+
+  await channelDb.saveLineup(created.channel.uuid, {
+    items: [
+      { type: 'content', id, durationMs: 100_000 },
+      { type: 'offline', durationMs: 30_000 },
+    ],
+  });
+  const enabled = await channelDb.updateChannel(created.channel.uuid, {
+    ...data,
+    autoSkipCredits: true,
+  });
+  expect(enabled.channel.autoSkipCredits).toBe(true);
+  expect(enabled.channel.duration).toBe(116_000);
+  expect(enabled.lineup.items[0]).toMatchObject({
+    durationMs: 86_000,
+    creditSkip: { sourceDurationMs: 100_000 },
+  });
+  expect(enabled.lineup.startTimeOffsets).toEqual([0, 86_000, 116_000]);
+  const legacyUpdate = await channelDb.updateChannel(created.channel.uuid, {
+    ...data,
+    duration: enabled.channel.duration,
+  });
+  expect(legacyUpdate.channel.autoSkipCredits).toBe(true);
+  expect(legacyUpdate.lineup.items[0].durationMs).toBe(86_000);
+  const disabled = await channelDb.updateChannel(created.channel.uuid, {
+    ...data,
+    autoSkipCredits: false,
+  });
+  expect(disabled.channel.autoSkipCredits).toBe(false);
+  expect(disabled.channel.duration).toBe(130_000);
+  expect(disabled.lineup.items[0]).toEqual({
+    type: 'content',
+    id,
+    durationMs: 100_000,
+    startOffsetMs: 0,
   });
 });
