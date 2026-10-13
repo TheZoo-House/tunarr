@@ -369,14 +369,9 @@ export const streamApi: RouterPluginAsyncCallback = async (fastify) => {
         return res.status(400).send('Invalid file path');
       }
 
-      // A request for a missing segment must not move this client's position.
-      // Otherwise its next playlist is built around segments that are gone.
-      if (!(await fileExists(filePath))) {
-        return res.status(404).send('File not found');
-      }
-
-      session.onSegmentRequested(req.ip, req.params.file);
-
+      // Normal HLS subtitle windows are generated from video timing and cue
+      // files, not physical subsNNNNNN.vtt files. Resolve them before checking
+      // disk existence, without advancing the client's video position.
       const windowSegment = req.params.file.match(SubtitleWindowRegex)?.[1];
       if (windowSegment !== undefined && req.params.sessionType === 'hls') {
         const vtt = await (session as HlsSession).subtitleWindow(
@@ -386,6 +381,14 @@ export const streamApi: RouterPluginAsyncCallback = async (fastify) => {
           ? res.status(404).send('Subtitle segment not found')
           : res.type('text/vtt').send(injectTimestampMap(vtt));
       }
+
+      // A request for a missing segment must not move this client's position.
+      // Otherwise its next playlist is built around segments that are gone.
+      if (!(await fileExists(filePath))) {
+        return res.status(404).send('File not found');
+      }
+
+      session.onSegmentRequested(req.ip, req.params.file);
 
       if (req.params.file.endsWith('.vtt')) {
         const content = await fs.readFile(filePath, 'utf-8');
