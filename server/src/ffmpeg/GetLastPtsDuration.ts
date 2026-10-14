@@ -1,9 +1,8 @@
 import type { ISettingsDB } from '@/db/interfaces/ISettingsDB.js';
 import { Result } from '@/types/result.js';
 import { isNonEmptyString } from '@/util/index.js';
-import { NewLineTransformStream } from '@/util/streams.js';
 import { spawn } from 'node:child_process';
-import { Writable } from 'node:stream';
+import { createInterface } from 'node:readline';
 
 export type PtsAndDuration = {
   pts: number;
@@ -29,24 +28,33 @@ export class GetLastPtsDurationTask {
     });
 
     let lastLine: string = '';
-    proc.stdout.pipe(new NewLineTransformStream()).pipe(
-      new Writable({
-        write(chunk, _, callback) {
-          if (chunk instanceof Buffer) {
-            const str = chunk.toString('utf-8').trim();
-            if (isNonEmptyString(str)) {
-              lastLine = str;
-            }
+    let latestPacket: PtsAndDuration | undefined;
+    // Buffer complete lines so a split duration cannot trigger the fallback.
+    createInterface({ input: proc.stdout }).on('line', (line) => {
+      const str = line.trim();
+      if (isNonEmptyString(str)) {
+        lastLine = str;
+        const parsed = Result.attempt(() => parsePtsAndDuration(str));
+        parsed.forEach((packet) => {
+          // Packets are interleaved in decode order. B-frames and audio
+          // can end later than the final packet's presentation time.
+          if (
+            latestPacket === undefined ||
+            packet.pts + packet.duration >
+              latestPacket.pts + latestPacket.duration
+          ) {
+            latestPacket = packet;
           }
-          callback();
-        },
-      }),
-    );
+        });
+      }
+    });
 
     return new Promise((resolve, reject) => {
       proc.on('error', reject);
       proc.on('close', () => {
-        resolve(Result.attempt(() => parsePtsAndDuration(lastLine)));
+        resolve(
+          Result.attempt(() => latestPacket ?? parsePtsAndDuration(lastLine)),
+        );
       });
     });
   }

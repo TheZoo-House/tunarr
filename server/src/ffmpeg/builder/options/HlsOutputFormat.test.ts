@@ -25,6 +25,24 @@ function makeFormat(
 }
 
 describe('HlsOutputFormat', () => {
+  test.each([true, false])(
+    'forwards TS discontinuity only for subsequent processes: first=%s',
+    (first) => {
+      const opts = makeFormat(first).options();
+      const idx = opts.indexOf('-hls_segment_options');
+      expect(opts).not.toContain('-mpegts_flags');
+      if (first) {
+        expect(idx).toBe(-1);
+      } else {
+        expect(idx).toBeGreaterThan(-1);
+        expect(opts[idx + 1]).toBe('mpegts_flags=+initial_discontinuity');
+        expect(idx).toBeLessThan(opts.length - 1);
+      }
+      const flags = opts[opts.indexOf('-hls_flags') + 1];
+      expect(flags?.includes('discont_start')).toBe(!first);
+    },
+  );
+
   test('includes -master_pl_name playlist.m3u8 for first transcode', () => {
     const opts = makeFormat(true).options();
     const idx = opts.indexOf('-master_pl_name');

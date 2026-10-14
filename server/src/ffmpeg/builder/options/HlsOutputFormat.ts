@@ -54,7 +54,9 @@ export class HlsOutputFormat extends OutputOption {
     opts.push('-hls_flags', flags.join('+'));
 
     if (!this.isFirstTranscode) {
-      opts.push('-mpegts_flags', '+initial_discontinuity');
+      // The MPEG-TS muxer is nested inside HLS. Forward its option so the
+      // new process's continuity-counter reset is signaled in the TS packets.
+      opts.push('-hls_segment_options', 'mpegts_flags=+initial_discontinuity');
     }
 
     opts.push(this.playlistPath);
