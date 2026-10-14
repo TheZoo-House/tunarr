@@ -493,7 +493,12 @@ export class HlsSession extends BaseHlsSession<HlsSessionOptions> {
   }
 
   protected override getAdditionalRequiredFiles(): string[] {
-    return this.#currentSubtitleRendition
+    // Normal HLS serves subtitle playlists and empty WebVTT windows from the
+    // video timeline. Sparse tracks may not create subs.m3u8 before readiness
+    // times out, or at all after a seek past the final cue. Direct-v2 still
+    // serves the physical subtitle playlist and must wait for it.
+    return this.sessionType === 'hls_direct_v2' &&
+      this.#currentSubtitleRendition
       ? [this.getHlsOptions().subtitleStreamNameFormat]
       : [];
   }

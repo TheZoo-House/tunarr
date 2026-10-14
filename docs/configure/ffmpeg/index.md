@@ -65,6 +65,8 @@ A subtitle that could not be resolved during a scan — because the media server
 
 When using the **HLS Direct** stream mode, sidecar text-based subtitles are served as WebVTT tracks in the HLS master playlist. Clients that support HLS subtitle renditions (most modern players) will display them as selectable subtitle options.
 
+Normal HLS starts once the video playlist and initial video segments are available. Selected sidecar subtitles remain advertised even if their first cue is much later, or a seek leaves no cues to play. Subtitle playlists follow the video timeline and return empty WebVTT windows until a cue is available. HLS Direct still waits for its physical subtitle playlist when a subtitle track is selected.
+
 !!! note
     Sidecar subtitle support is currently experimental. To enable it, go to **Settings > Features** and turn on the sidecar subtitles option.
 

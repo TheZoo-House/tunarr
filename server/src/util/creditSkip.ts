@@ -158,44 +158,50 @@ export async function prepareCreditLineup(
         ),
       )
     : new Map<string, CreditSkip>();
-  return items.flatMap((item): LineupItem[] => {
-    if (item.type !== 'content' || item.fillerListId) return [item];
-    const { creditSkip, ...rest } = item;
-    const sourceStart =
-      creditSkip?.sourceStartOffsetMs ?? item.startOffsetMs ?? 0;
-    const sourceDuration = creditSkip?.sourceDurationMs ?? item.durationMs;
-    const original = {
-      ...rest,
-      durationMs: sourceDuration,
-      startOffsetMs: sourceStart,
-    };
-    const plan = plans.get(item.id);
-    if (
-      !plan ||
-      sourceStart < 0 ||
-      sourceStart + sourceDuration > plan.sourceDurationMs
-    )
-      return [creditSkip ? original : item];
-    const segments = plan.segments.flatMap((segment) => {
-      const start = Math.max(sourceStart, segment.startOffsetMs);
-      const end = Math.min(
-        sourceStart + sourceDuration,
-        segment.startOffsetMs + segment.durationMs,
-      );
-      return end > start
-        ? [{ startOffsetMs: start, durationMs: end - start }]
-        : [];
-    });
-    if (segments.length === 0) return [];
-    const nextPlan = {
-      sourceStartOffsetMs: sourceStart,
-      sourceDurationMs: sourceDuration,
-      segments,
-    };
-    const durationMs = creditSkipDuration(nextPlan);
-    if (durationMs === sourceDuration) return [original];
-    return [{ ...original, durationMs, creditSkip: nextPlan }];
+  return items.flatMap((item) => prepareCreditItem(item, plans));
+}
+
+// Use the same source-span clipping for persistence and duration reconciliation.
+export function prepareCreditItem(
+  item: LineupItem,
+  plans: ReadonlyMap<string, CreditSkip>,
+): LineupItem[] {
+  if (item.type !== 'content' || item.fillerListId) return [item];
+  const { creditSkip, ...rest } = item;
+  const sourceStart =
+    creditSkip?.sourceStartOffsetMs ?? item.startOffsetMs ?? 0;
+  const sourceDuration = creditSkip?.sourceDurationMs ?? item.durationMs;
+  const original = {
+    ...rest,
+    durationMs: sourceDuration,
+    startOffsetMs: sourceStart,
+  };
+  const plan = plans.get(item.id);
+  if (
+    !plan ||
+    sourceStart < 0 ||
+    sourceStart + sourceDuration > plan.sourceDurationMs
+  )
+    return [creditSkip ? original : item];
+  const segments = plan.segments.flatMap((segment) => {
+    const start = Math.max(sourceStart, segment.startOffsetMs);
+    const end = Math.min(
+      sourceStart + sourceDuration,
+      segment.startOffsetMs + segment.durationMs,
+    );
+    return end > start
+      ? [{ startOffsetMs: start, durationMs: end - start }]
+      : [];
   });
+  if (segments.length === 0) return [];
+  const nextPlan = {
+    sourceStartOffsetMs: sourceStart,
+    sourceDurationMs: sourceDuration,
+    segments,
+  };
+  const durationMs = creditSkipDuration(nextPlan);
+  if (durationMs === sourceDuration) return [original];
+  return [{ ...original, durationMs, creditSkip: nextPlan }];
 }
 
 export function scheduleCreditSkips(

@@ -1,4 +1,6 @@
-import { sortedLastIndex } from 'lodash-es';
+import { isEqual, sortedLastIndex } from 'lodash-es';
+import type { CreditSkip } from '@tunarr/types/schemas';
+import { prepareCreditItem } from '../util/creditSkip.ts';
 import type { LineupItem } from './derived_types/Lineup.ts';
 import { isContentItem, isOfflineItem } from './derived_types/Lineup.ts';
 import { calculateStartTimeOffsets } from './lineupUtil.ts';
@@ -26,19 +28,40 @@ export type LineupDurationReconciliation = {
  *   difference, so later items keep their place in the cycle.
  * - Items whose duration drops to zero are removed. A removed segment takes
  *   the mid-roll break before it along.
+ * - Credit-skip source spans follow the same rules, but flex and positions use
+ *   their retained durations. Pass current validated plans for enabled channels.
  */
 export function reconcileLineupDurations(
   items: ReadonlyArray<LineupItem>,
   programDurations: ReadonlyMap<string, number>,
+  creditSkips: ReadonlyMap<string, CreditSkip> = new Map(),
 ): LineupDurationReconciliation {
+  // Reconcile source spans first, then apply current markers. Flex and playback
+  // positions must use retained durations, not the unskipped source spans.
+  const sourceItems = items.map((item): LineupItem => {
+    if (!isContentItem(item) || !item.creditSkip || item.fillerListId)
+      return item;
+    const { creditSkip, ...source } = item;
+    return {
+      ...source,
+      startOffsetMs: creditSkip.sourceStartOffsetMs,
+      durationMs: creditSkip.sourceDurationMs,
+    };
+  });
+  const targets = sourceItems.map((item, index) => {
+    const durationMs = targetDuration(sourceItems, index, programDurations);
+    const source = durationMs === undefined ? item : { ...item, durationMs };
+    return applyCreditSkip(source, creditSkips);
+  });
   const durations = items.map((item) => item.durationMs);
   let changedItemCount = 0;
 
   for (const [i, item] of items.entries()) {
-    const target = targetDuration(items, i, programDurations);
-    if (target === undefined || target === item.durationMs) {
+    const targetItem = targets[i];
+    if (!targetItem || isEqual(targetItem, item)) {
       continue;
     }
+    const target = targetItem.durationMs;
 
     changedItemCount++;
     durations[i] = target;
@@ -68,13 +91,20 @@ export function reconcileLineupDurations(
     const kept = durationMs > 0;
     indexMap.push({ index: reconciled.length, kept });
     if (kept) {
-      reconciled.push(
-        durationMs === item.durationMs ? item : { ...item, durationMs },
-      );
+      reconciled.push({ ...(targets[i] ?? item), durationMs });
     }
   }
 
   return { items: reconciled, indexMap, changedItemCount };
+}
+
+function applyCreditSkip(
+  item: LineupItem,
+  plans: ReadonlyMap<string, CreditSkip>,
+): LineupItem {
+  // Share persistence's clipping so saveLineup cannot change the effective
+  // durations used here for flex, cycle offsets and position remapping.
+  return prepareCreditItem(item, plans)[0] ?? { ...item, durationMs: 0 };
 }
 
 function isMidRollBreakItem(item: LineupItem | undefined) {

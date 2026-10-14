@@ -12,6 +12,8 @@ import { GlobalScheduler } from '@/services/Scheduler.js';
 import { OnDemandChannelService } from '@/services/OnDemandChannelService.js';
 import { KEYS } from '@/types/inject.js';
 import { isNonEmptyString } from '@/util/index.js';
+import { loadCreditSkips } from '@/util/creditSkip.js';
+import type { DrizzleDBAccess } from '@/db/schema/index.js';
 import { InjectLogger } from '@/util/inject.js';
 import { type Logger } from '@/util/logging/LoggerFactory.js';
 import { flushEventLoop } from '@tunarr/shared/util';
@@ -88,6 +90,7 @@ export class ReconcileProgramDurationsTask extends Task2<
     private onDemandService: OnDemandChannelService,
     @inject(RegenerateChannelLineupCommand)
     private regenerateLineup: RegenerateChannelLineupCommand,
+    @inject(KEYS.DrizzleDB) private drizzle: DrizzleDBAccess,
   ) {
     super();
     this.logger.setBindings({ task: this.ID });
@@ -153,9 +156,16 @@ export class ReconcileProgramDurationsTask extends Task2<
       }
 
       const { channel, lineup } = channelAndLineup;
+      const creditSkips = channel.autoSkipCredits
+        ? await loadCreditSkips(
+            this.drizzle,
+            lineup.items.filter(isContentItem).map((item) => item.id),
+          )
+        : new Map();
       const reconciliation = reconcileLineupDurations(
         lineup.items,
         programDurations,
+        creditSkips,
       );
       if (reconciliation.changedItemCount === 0) {
         return;

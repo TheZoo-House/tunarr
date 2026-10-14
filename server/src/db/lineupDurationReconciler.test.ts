@@ -12,6 +12,8 @@ import {
   remapLineupPosition,
 } from './lineupDurationReconciler.ts';
 import { calculateStartTimeOffsets } from './lineupUtil.ts';
+import type { DrizzleDBAccess } from './schema/index.ts';
+import { prepareCreditLineup, resolveCreditSkip } from '../util/creditSkip.ts';
 
 const content = (
   id: string,
@@ -38,6 +40,73 @@ const lineupOf = (items: ReadonlyArray<LineupItem>): Lineup => ({
 });
 
 describe('reconcileLineupDurations', () => {
+  test.each([120_000, 55_000, 35_000])(
+    'reconciles credit-skipped mid-roll source spans at %d ms and matches save preparation',
+    async (duration) => {
+      const items = [
+        content('a', 40_000, { startOffsetMs: 0 }),
+        flex(10_000, 'midroll'),
+        content('a', 46_000, {
+          startOffsetMs: 40_000,
+          creditSkip: {
+            sourceStartOffsetMs: 40_000,
+            sourceDurationMs: 60_000,
+            segments: [{ startOffsetMs: 54_000, durationMs: 46_000 }],
+          },
+        }),
+        flex(30_000),
+        content('b', 60_000),
+      ];
+      const version = {
+        duration,
+        chapters: [
+          {
+            chapterType: 'outro',
+            startTime: Math.min(40_000, duration - 5_000),
+            endTime: Math.min(54_000, duration),
+          },
+        ],
+      };
+      const plan = resolveCreditSkip('movie', duration, [version]);
+      if (!plan) throw new Error('Missing current credit plan');
+      const result = reconcileLineupDurations(
+        items,
+        new Map([['a', duration]]),
+        new Map([['a', plan]]),
+      );
+      const expected =
+        duration === 120_000
+          ? [40_000, 10_000, 66_000, 10_000, 60_000]
+          : duration === 55_000
+            ? [40_000, 10_000, 1_000, 75_000, 60_000]
+            : [30_000, 76_000, 60_000];
+      expect(durations(result.items)).toEqual(expected);
+      const drizzle = {
+        query: {
+          program: {
+            findMany: async () => [
+              { uuid: 'a', type: 'movie', duration, versions: [version] },
+            ],
+          },
+        },
+      } as unknown as DrizzleDBAccess;
+      expect(await prepareCreditLineup(drizzle, result.items, true)).toEqual(
+        result.items,
+      );
+      const cursor = remapLineupPosition(items, result, 136_000);
+      const playback = calculateStreamDuration(
+        cursor,
+        0,
+        durations(result.items).reduce((sum, length) => sum + length, 0),
+        lineupOf(result.items),
+      );
+      expect(result.items[playback.currentProgramIndex]).toMatchObject({
+        id: 'b',
+      });
+      expect(playback.timeElapsed).toBe(10_000);
+    },
+  );
+
   test('sets whole program items to the program duration', () => {
     const result = reconcileLineupDurations(
       [content('a', 1000), content('b', 2000)],

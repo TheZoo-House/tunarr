@@ -68,13 +68,13 @@ export class RegenerateChannelLineupCommand {
       });
 
       this.channelDB.replaceChannelPrograms(channelId, programIds);
-      await this.channelDB.saveLineup(channelId, {
+      const savedLineup = await this.channelDB.saveLineup(channelId, {
         items: lineupItems,
         scheduleSeed: result.seed,
       });
       await this.channelDB.updateChannelDuration(
         channelId,
-        sum(lineupItems.map((item) => item.durationMs)),
+        sum(savedLineup.items.map((item) => item.durationMs)),
       );
     }
 

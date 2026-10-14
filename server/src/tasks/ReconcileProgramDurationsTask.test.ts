@@ -14,12 +14,46 @@ import { GlobalScheduler } from '@/services/Scheduler.ts';
 import type { OnDemandChannelService } from '@/services/OnDemandChannelService.ts';
 import { calculateStreamDuration } from '@/stream/StreamProgramCalculator.ts';
 import { ReconcileProgramDurationsTask } from './ReconcileProgramDurationsTask.ts';
+import type { DrizzleDBAccess } from '@/db/schema/index.ts';
+import { prepareCreditLineup, resolveCreditSkip } from '@/util/creditSkip.ts';
+
+function creditProgram(
+  duration = 100_000,
+  startTime = 80_000,
+  endTime = 94_000,
+) {
+  return {
+    uuid: 'a',
+    type: 'movie',
+    duration,
+    versions: [
+      { duration, chapters: [{ chapterType: 'outro', startTime, endTime }] },
+    ],
+  };
+}
+
+function skippedItem() {
+  const program = creditProgram();
+  return {
+    type: 'content' as const,
+    id: 'a',
+    startOffsetMs: 0,
+    durationMs: 86_000,
+    creditSkip: resolveCreditSkip(
+      program.type,
+      program.duration,
+      program.versions,
+    ),
+  };
+}
 
 const NOW = 1_760_000_000_000;
 
 type Fixture = {
   items: LineupItem[];
   programs: { uuid: string; duration: number }[];
+  creditPrograms?: ReturnType<typeof creditProgram>[];
+  autoSkipCredits?: boolean;
   startTime?: number;
   onDemandConfig?: OnDemandChannelConfig;
   schedule?: Lineup['schedule'];
@@ -38,8 +72,10 @@ function setup({
   onDemandConfig,
   schedule,
   scheduleSeed,
+  creditPrograms = [],
+  autoSkipCredits = false,
 }: Fixture) {
-  const lineup: Lineup = {
+  let lineup: Lineup = {
     version: 6,
     lastUpdated: 0,
     items,
@@ -52,15 +88,36 @@ function setup({
     uuid: 'ch1',
     startTime,
     duration: sumBy(items, (i) => i.durationMs),
+    autoSkipCredits,
   };
+
+  const drizzle = {
+    query: { program: { findMany: vi.fn().mockResolvedValue(creditPrograms) } },
+  } as unknown as DrizzleDBAccess;
 
   const channelDB = {
     getAllChannels: vi.fn().mockResolvedValue([channel]),
-    loadLineup: vi.fn().mockResolvedValue(lineup),
-    loadChannelAndLineup: vi.fn().mockResolvedValue({ channel, lineup }),
-    saveLineup: vi.fn().mockResolvedValue(lineup),
+    loadLineup: vi.fn(async () => lineup),
+    loadChannelAndLineup: vi.fn(async () => ({ channel, lineup })),
+    saveLineup: vi.fn(async (_id: string, update: Partial<Lineup>) => {
+      const savedItems = await prepareCreditLineup(
+        drizzle,
+        update.items ?? lineup.items,
+        autoSkipCredits,
+      );
+      lineup = {
+        ...lineup,
+        ...update,
+        items: savedItems,
+        startTimeOffsets: calculateStartTimeOffsets(savedItems),
+      };
+      channel.duration = sumBy(savedItems, (item) => item.durationMs);
+      return lineup;
+    }),
     updateChannelStartTime: vi.fn().mockResolvedValue(undefined),
-    updateLineupConfig: vi.fn().mockResolvedValue(undefined),
+    updateLineupConfig: vi.fn(
+      async (_id: string, _key: string, _config: OnDemandChannelConfig) => {},
+    ),
   };
 
   const db = {
@@ -88,6 +145,7 @@ function setup({
     db,
     onDemandService,
     regenerateLineup as unknown as RegenerateChannelLineupCommand,
+    drizzle,
   );
 
   return {
@@ -114,6 +172,116 @@ describe('ReconcileProgramDurationsTask', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  test('an unchanged credit plan does not consume flex or move playback on repeated scans', async () => {
+    const items: LineupItem[] = [
+      skippedItem(),
+      { type: 'offline', durationMs: 30_000 },
+      { type: 'content', id: 'b', durationMs: 60_000 },
+    ];
+    const { task, channelDB } = setup({
+      items,
+      programs: [creditProgram(), { uuid: 'b', duration: 60_000 }],
+      creditPrograms: [creditProgram()],
+      autoSkipCredits: true,
+      onDemandConfig: { state: 'paused', cursor: 126_000 },
+    });
+    await task.run(undefined);
+    await task.run(undefined);
+    const saved = await channelDB.loadLineup();
+    expect(saved.items).toEqual(items);
+    expect(saved.startTimeOffsets).toEqual([0, 86_000, 116_000, 176_000]);
+    expect(channelDB.saveLineup).not.toHaveBeenCalled();
+    expect(channelDB.updateLineupConfig).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['grown source', creditProgram(120_000), 106_000, 10_000],
+    [
+      'changed source with equal retained duration',
+      creditProgram(110_000, 80_000, 104_000),
+      86_000,
+      30_000,
+    ],
+    [
+      'moved markers with equal retained duration',
+      creditProgram(100_000, 70_000, 84_000),
+      86_000,
+      30_000,
+    ],
+    ['shortened source', creditProgram(60_000, 50_000, 60_000), 50_000, 66_000],
+    [
+      'changed markers',
+      creditProgram(100_000, 80_000, 100_000),
+      80_000,
+      36_000,
+    ],
+    [
+      'stale version markers',
+      { ...creditProgram(), duration: 120_000 },
+      120_000,
+      0,
+    ],
+    ['removed markers', { ...creditProgram(), versions: [] }, 100_000, 16_000],
+  ])(
+    'reconciles %s in the retained timeline and remains stable',
+    async (_name, program, retained, flex) => {
+      const { task, channel, channelDB } = setup({
+        items: [
+          skippedItem(),
+          { type: 'offline', durationMs: 30_000 },
+          { type: 'content', id: 'b', durationMs: 60_000 },
+        ],
+        programs: [program, { uuid: 'b', duration: 60_000 }],
+        creditPrograms: [program],
+        autoSkipCredits: true,
+        onDemandConfig: { state: 'paused', cursor: 126_000 },
+      });
+      await task.run(undefined);
+      const saved = await channelDB.loadLineup();
+      expect(saved.items.map((item) => item.durationMs)).toEqual(
+        flex > 0 ? [retained, flex, 60_000] : [retained, 60_000],
+      );
+      expect(channel.duration).toBe(retained + flex + 60_000);
+      const cursor = channelDB.updateLineupConfig.mock.calls[0]?.[2]?.cursor;
+      expect(cursor).toBe(retained + flex + 10_000);
+      if (cursor === undefined) throw new Error('Missing reconciled cursor');
+      const playback = calculateStreamDuration(
+        cursor,
+        0,
+        channel.duration,
+        saved,
+      );
+      expect(saved.items[playback.currentProgramIndex]).toMatchObject({
+        id: 'b',
+      });
+      expect(playback.timeElapsed).toBe(10_000);
+      await task.run(undefined);
+      expect(channelDB.saveLineup).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test('a seeded auto-skip schedule regenerates only when its effective plan changes', async () => {
+    const fixture = {
+      items: [skippedItem()],
+      programs: [creditProgram()],
+      creditPrograms: [creditProgram()],
+      autoSkipCredits: true,
+      schedule: timeSchedule,
+      scheduleSeed: [1, 2, 3],
+    };
+    const unchanged = setup(fixture);
+    await unchanged.task.run(undefined);
+    expect(unchanged.regenerateLineup.execute).not.toHaveBeenCalled();
+    const changed = setup({
+      ...fixture,
+      creditPrograms: [creditProgram(100_000, 80_000, 100_000)],
+    });
+    await changed.task.run(undefined);
+    expect(changed.regenerateLineup.execute).toHaveBeenCalledWith({
+      channelId: 'ch1',
+    });
   });
 
   test('corrects durations and recomputes startTimeOffsets', async () => {
